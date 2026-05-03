@@ -32,7 +32,7 @@ const SHEET_HEADERS = {
     "evaluation_criteria",
     "ideal_answer_hint"
   ],
-  [SHEETS.CANDIDATES]: ["id", "full_name", "email", "phone", "created_at"],
+  [SHEETS.CANDIDATES]: ["id", "full_name", "email", "phone", "created_at", "applied_position"],
   [SHEETS.SESSIONS]: [
     "id",
     "candidate_id",
@@ -295,6 +295,25 @@ async function ensureSheetExists(sheetName, headers, seedRows = []) {
         values: [headers, ...seedRows]
       }
     });
+    return;
+  }
+
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${sheetName}!1:1`
+  });
+  const existingHeaders = response.data.values?.[0] || [];
+  const missingHeaders = headers.filter((header) => !existingHeaders.includes(header));
+
+  if (missingHeaders.length) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${sheetName}!A1`,
+      valueInputOption: "USER_ENTERED",
+      requestBody: {
+        values: [[...existingHeaders, ...missingHeaders]]
+      }
+    });
   }
 }
 
@@ -333,11 +352,23 @@ async function getSessionById(sessionId) {
   return rows.find((row) => row.id === sessionId) || null;
 }
 
-async function evaluateAnswer(question, answer, attemptNo) {
+function getAppliedPosition(candidate) {
+  return String(candidate?.applied_position || "").trim() || "Chưa cung cấp";
+}
+
+function questionTextForCandidate(question, appliedPosition) {
+  if (!appliedPosition || appliedPosition === "Chưa cung cấp") {
+    return question.question_text;
+  }
+
+  return `Cho vị trí ${appliedPosition}: ${question.question_text}`;
+}
+
+async function evaluateAnswer(question, answer, attemptNo, appliedPosition) {
   const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
   const prompt = `
 Bạn là AI sơ lọc ứng viên.
-Hãy đánh giá xem câu trả lời của ứng viên cho câu hỏi bên dưới đã đủ ý, đủ chi tiết và đúng trọng tâm chưa.
+Hãy đánh giá xem câu trả lời của ứng viên cho câu hỏi bên dưới đã đủ ý, đủ chi tiết, đúng trọng tâm và phù hợp với vị trí ứng tuyển chưa.
 
 Yêu cầu:
 - Nếu câu trả lời đạt: accepted = true.
@@ -346,6 +377,7 @@ Yêu cầu:
 - score_over_10 là điểm tham khảo cho nhà tuyển dụng.
 - missing_points là mảng các ý còn thiếu.
 - summary_for_recruiter là tóm tắt ngắn cho nội bộ.
+- Luôn đánh giá theo bối cảnh vị trí ứng tuyển. Câu trả lời càng liên quan trực tiếp đến vị trí thì điểm càng cao.
 - Không được viết ngoài JSON.
 
 Trả về JSON đúng cấu trúc:
@@ -358,6 +390,7 @@ Trả về JSON đúng cấu trúc:
 }
 
 Câu hỏi: ${question.question_text}
+Vị trí ứng tuyển: ${appliedPosition}
 Tiêu chí đánh giá: ${question.evaluation_criteria}
 Gợi ý đáp án mong đợi: ${question.ideal_answer_hint || "Không có"}
 Lần trả lời hiện tại: ${attemptNo}
@@ -395,16 +428,18 @@ async function loadSessionState(sessionId) {
     return null;
   }
 
+  const candidate = await getCandidateById(session.candidate_id);
   const questions = await getTemplateQuestions(session.template_id);
   const currentQuestion =
     questions.find((q) => Number(q.order_no) === Number(session.current_question_no)) || null;
 
-  return { session, questions, currentQuestion };
+  return { session, candidate, questions, currentQuestion };
 }
 
 async function generateFinalReport(sessionId) {
   const session = await getSessionById(sessionId);
   const candidate = await getCandidateById(session.candidate_id);
+  const appliedPosition = getAppliedPosition(candidate);
   const questionMap = await getQuestionMap();
   const answers = (await getRows(SHEETS.ANSWERS))
     .filter((row) => row.session_id === sessionId)
@@ -424,7 +459,7 @@ async function generateFinalReport(sessionId) {
     if (!item) {
       item = {
         order_no: Number(question.order_no),
-        question_text: question.question_text,
+        question_text: questionTextForCandidate(question, appliedPosition),
         attempts: []
       };
       grouped.push(item);
@@ -456,6 +491,7 @@ Thông tin ứng viên:
 - Họ tên: ${candidate.full_name}
 - Email: ${candidate.email}
 - Số điện thoại: ${candidate.phone}
+- Vị trí ứng tuyển: ${getAppliedPosition(candidate)}
 
 Nội dung phỏng vấn:
 ${JSON.stringify(grouped, null, 2)}
@@ -516,15 +552,22 @@ app.post("/api/interview/start", async (req, res) => {
   try {
     await ensureSheetsBootstrap();
 
-    const { fullName, email, phone, templateId = 1 } = req.body;
-    if (!fullName || !email) {
-      return res.status(400).json({ error: "Thiếu họ tên hoặc email." });
+    const { fullName, email, phone, appliedPosition, templateId = 1 } = req.body;
+    if (!fullName || !email || !appliedPosition) {
+      return res.status(400).json({ error: "Thiếu họ tên, email hoặc vị trí ứng tuyển." });
     }
 
     const candidateId = await nextId(SHEETS.CANDIDATES, "cand_");
     const sessionId = await nextId(SHEETS.SESSIONS, "sess_");
 
-    await appendRow(SHEETS.CANDIDATES, [candidateId, fullName, email, phone || "", nowIso()]);
+    await appendRow(SHEETS.CANDIDATES, [
+      candidateId,
+      fullName,
+      email,
+      phone || "",
+      nowIso(),
+      appliedPosition
+    ]);
     await appendRow(SHEETS.SESSIONS, [
       sessionId,
       candidateId,
@@ -545,7 +588,7 @@ app.post("/api/interview/start", async (req, res) => {
       candidateId,
       question: {
         orderNo: Number(questions[0].order_no),
-        text: questions[0].question_text
+        text: questionTextForCandidate(questions[0], appliedPosition)
       }
     });
   } catch (error) {
@@ -568,7 +611,10 @@ app.get("/api/interview/:sessionId/current", async (req, res) => {
       question: state.currentQuestion
         ? {
             orderNo: Number(state.currentQuestion.order_no),
-            text: state.currentQuestion.question_text
+            text: questionTextForCandidate(
+              state.currentQuestion,
+              getAppliedPosition(state.candidate)
+            )
           }
         : null
     });
@@ -598,7 +644,13 @@ app.post("/api/interview/:sessionId/answer", async (req, res) => {
     );
 
     const attemptNo = relatedAttempts.length + 1;
-    const evaluation = await evaluateAnswer(state.currentQuestion, answer, attemptNo);
+    const appliedPosition = getAppliedPosition(state.candidate);
+    const evaluation = await evaluateAnswer(
+      state.currentQuestion,
+      answer,
+      attemptNo,
+      appliedPosition
+    );
     const forcedAdvance = !evaluation.accepted && attemptNo >= 3;
     const answerId = await nextId(SHEETS.ANSWERS, "ans_");
 
@@ -663,7 +715,7 @@ app.post("/api/interview/:sessionId/answer", async (req, res) => {
         : "Câu trả lời đã đạt yêu cầu. Chuyển sang câu tiếp theo.",
       nextQuestion: {
         orderNo: Number(nextQuestion.order_no),
-        text: nextQuestion.question_text
+        text: questionTextForCandidate(nextQuestion, appliedPosition)
       },
       completed: false
     });
@@ -686,6 +738,7 @@ app.get("/api/interview/:sessionId/report", async (req, res) => {
     const reportRows = await getRows(SHEETS.REPORTS);
     const answerRows = await getRows(SHEETS.ANSWERS);
     const questionMap = await getQuestionMap();
+    const appliedPosition = getAppliedPosition(candidate);
 
     const report = reportRows.find((row) => row.session_id === req.params.sessionId) || null;
     const groupedAnswers = [];
@@ -709,7 +762,7 @@ app.get("/api/interview/:sessionId/report", async (req, res) => {
         if (!item) {
           item = {
             orderNo: Number(question.order_no),
-            questionText: question.question_text,
+            questionText: questionTextForCandidate(question, appliedPosition),
             attempts: []
           };
           groupedAnswers.push(item);
@@ -730,7 +783,8 @@ app.get("/api/interview/:sessionId/report", async (req, res) => {
         status: session.status,
         full_name: candidate.full_name,
         email: candidate.email,
-        phone: candidate.phone
+        phone: candidate.phone,
+        applied_position: getAppliedPosition(candidate)
       },
       report: report
         ? {

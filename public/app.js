@@ -10,12 +10,21 @@ const statusBar = document.getElementById("status-bar");
 let sessionId = null;
 let currentQuestionNo = 0;
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function appendMessage(role, title, text) {
   const wrapper = document.createElement("article");
   wrapper.className = `message ${role}`;
   wrapper.innerHTML = `
-    <span class="meta">${title}</span>
-    <div>${text.replace(/\n/g, "<br>")}</div>
+    <span class="meta">${escapeHtml(title)}</span>
+    <div>${escapeHtml(text).replace(/\n/g, "<br>")}</div>
   `;
   chatLog.appendChild(wrapper);
   chatLog.scrollTop = chatLog.scrollHeight;
@@ -87,9 +96,9 @@ async function submitAnswer(answer) {
 function renderAttempt(attempt) {
   return `
     <div class="attempt">
-      <p><strong>Lần ${attempt.attemptNo}</strong> | <strong>Điểm AI:</strong> ${attempt.score}/10 | <strong>Đạt:</strong> ${attempt.accepted ? "Có" : "Chưa"}</p>
-      <p><strong>Trả lời:</strong> ${attempt.answerText}</p>
-      <p><strong>Phản hồi AI:</strong> ${attempt.feedback || "-"}</p>
+      <p><strong>Lần ${escapeHtml(attempt.attemptNo)}</strong> | <strong>Điểm AI:</strong> ${escapeHtml(attempt.score)}/10 | <strong>Đạt:</strong> ${attempt.accepted ? "Có" : "Chưa"}</p>
+      <p><strong>Trả lời:</strong> ${escapeHtml(attempt.answerText)}</p>
+      <p><strong>Phản hồi AI:</strong> ${escapeHtml(attempt.feedback || "-")}</p>
     </div>
   `;
 }
@@ -97,8 +106,8 @@ function renderAttempt(attempt) {
 function renderQuestionBlock(item) {
   return `
     <div class="report-card">
-      <h3>Câu ${item.orderNo}</h3>
-      <div class="report-block"><strong>Câu hỏi:</strong> ${item.questionText}</div>
+      <h3>Câu ${escapeHtml(item.orderNo)}</h3>
+      <div class="report-block"><strong>Câu hỏi:</strong> ${escapeHtml(item.questionText)}</div>
       ${item.attempts.map(renderAttempt).join("")}
     </div>
   `;
@@ -116,22 +125,23 @@ async function loadReport() {
   reportContent.innerHTML = `
     <div class="report-card">
       <h3>Thông tin ứng viên</h3>
-      <p><strong>Ứng viên:</strong> ${data.session.full_name}</p>
-      <p><strong>Email:</strong> ${data.session.email}</p>
-      <p><strong>Điện thoại:</strong> ${data.session.phone || "-"}</p>
-      <p><strong>Kết luận:</strong> ${report?.recommendation || "REVIEW"}</p>
-      <p><strong>Tóm tắt:</strong> ${report?.overallSummary || "Chưa có"}</p>
+      <p><strong>Ứng viên:</strong> ${escapeHtml(data.session.full_name)}</p>
+      <p><strong>Email:</strong> ${escapeHtml(data.session.email)}</p>
+      <p><strong>Điện thoại:</strong> ${escapeHtml(data.session.phone || "-")}</p>
+      <p><strong>Vị trí ứng tuyển:</strong> ${escapeHtml(data.session.applied_position || "-")}</p>
+      <p><strong>Kết luận:</strong> ${escapeHtml(report?.recommendation || "REVIEW")}</p>
+      <p><strong>Tóm tắt:</strong> ${escapeHtml(report?.overallSummary || "Chưa có")}</p>
       <p><strong>Điểm mạnh:</strong></p>
       <ul class="report-list">
-        ${(report?.strengths || []).map((item) => `<li>${item}</li>`).join("") || "<li>-</li>"}
+        ${(report?.strengths || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("") || "<li>-</li>"}
       </ul>
       <p><strong>Rủi ro / lưu ý:</strong></p>
       <ul class="report-list">
-        ${(report?.concerns || []).map((item) => `<li>${item}</li>`).join("") || "<li>-</li>"}
+        ${(report?.concerns || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("") || "<li>-</li>"}
       </ul>
       <p><strong>Câu hỏi follow-up:</strong></p>
       <ul class="report-list">
-        ${(report?.followUpQuestions || []).map((item) => `<li>${item}</li>`).join("") || "<li>-</li>"}
+        ${(report?.followUpQuestions || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("") || "<li>-</li>"}
       </ul>
     </div>
     ${(data.answers || []).map(renderQuestionBlock).join("")}

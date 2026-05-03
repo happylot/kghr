@@ -23,18 +23,19 @@ Prototype này triển khai luồng sơ lọc bằng hội thoại AI và lưu d
 ## Luồng xử lý
 
 1. Ứng viên nhập thông tin cơ bản và bắt đầu phiên phỏng vấn.
-2. Hệ thống lấy câu hỏi hiện tại từ tab `questions`.
-3. Ứng viên trả lời.
-4. Backend gọi OpenAI để đánh giá:
+2. Ứng viên nhập vị trí ứng tuyển để hệ thống đặt ngữ cảnh cho câu hỏi và đánh giá câu trả lời.
+3. Hệ thống lấy câu hỏi hiện tại từ tab `questions`.
+4. Ứng viên trả lời.
+5. Backend gọi OpenAI để đánh giá theo vị trí ứng tuyển:
    - Có đúng trọng tâm không
    - Có đủ ý không
    - Có cần bổ sung gì không
-5. Nếu chưa đạt và chưa quá 3 lần:
+6. Nếu chưa đạt và chưa quá 3 lần:
    - Giữ nguyên câu hiện tại
    - Trả feedback để ứng viên bổ sung
-6. Nếu đạt hoặc đã quá 3 lần:
+7. Nếu đạt hoặc đã quá 3 lần:
    - Chuyển sang câu tiếp theo
-7. Khi hết 10 câu:
+8. Khi hết 10 câu:
    - Tạo report tổng hợp
    - Lưu report vào tab `reports`
    - Hiển thị để in
