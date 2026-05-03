@@ -73,6 +73,24 @@ npm run dev
 http://localhost:3000
 ```
 
+## CI/CD
+
+Workflow GitHub Actions nằm tại `.github/workflows/deploy.yml`.
+
+Khi push lên branch `main`, workflow sẽ:
+
+- Cài dependencies và kiểm tra cú pháp `server.js`.
+- Đồng bộ source lên VPS tại `/var/www/kg.comtv.top`.
+- Giữ nguyên `.env` và `google-service-account.json` đang có trên VPS.
+- Chạy `npm ci --omit=dev`, restart `pm2` app `kg-recruit`, và kiểm tra `/api/health`.
+
+Repository cần có các GitHub Secrets sau:
+
+- `VPS_HOST`: IP hoặc hostname VPS, ví dụ `14.225.7.175`
+- `VPS_PORT`: SSH port, ví dụ `1786`
+- `VPS_USER`: SSH user, ví dụ `root`
+- `VPS_PASSWORD`: SSH password
+
 ## Cấu trúc Google Sheet
 
 App sẽ tự tạo các tab sau nếu chưa có:

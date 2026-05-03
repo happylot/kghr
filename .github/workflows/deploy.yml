@@ -1,0 +1,102 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Syntax check
+        run: node --check server.js
+
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    needs: validate
+
+    env:
+      DEPLOY_PATH: /var/www/kg.comtv.top
+      PM2_APP: kg-recruit
+      APP_PORT: "3101"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install deployment tools
+        run: sudo apt-get update && sudo apt-get install -y sshpass rsync
+
+      - name: Sync application files
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          sshpass -p "$VPS_PASSWORD" rsync -az --delete \
+            --exclude ".git" \
+            --exclude ".github" \
+            --exclude ".env" \
+            --exclude "google-service-account.json" \
+            --exclude "node_modules" \
+            --exclude ".mysql-data" \
+            --exclude ".mysql-data-mysql96-backup" \
+            --exclude ".mysql-run" \
+            -e "ssh -p $VPS_PORT -o StrictHostKeyChecking=no" \
+            ./ "$VPS_USER@$VPS_HOST:$DEPLOY_PATH/"
+
+      - name: Install and restart service
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          sshpass -p "$VPS_PASSWORD" ssh -p "$VPS_PORT" -o StrictHostKeyChecking=no "$VPS_USER@$VPS_HOST" \
+            "DEPLOY_PATH='$DEPLOY_PATH' PM2_APP='$PM2_APP' APP_PORT='$APP_PORT' bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          cd "$DEPLOY_PATH"
+
+          test -f .env
+          test -f google-service-account.json
+
+          if grep -q '^PORT=' .env; then
+            sed -i "s/^PORT=.*/PORT=$APP_PORT/" .env
+          else
+            printf '\nPORT=%s\n' "$APP_PORT" >> .env
+          fi
+
+          npm ci --omit=dev
+          pm2 restart "$PM2_APP" --update-env || pm2 start server.js --name "$PM2_APP" --update-env
+          pm2 save
+
+          nginx -t
+          curl -fsS "http://127.0.0.1:$APP_PORT/api/health"
+          REMOTE
