@@ -16,7 +16,7 @@
 
 body {
   margin: 0;
-  font-family: Arial, sans-serif;
+  font-family: "Roboto", Arial, sans-serif;
   color: var(--text);
   background:
     radial-gradient(circle at top left, rgba(165, 92, 49, 0.16), transparent 30%),
