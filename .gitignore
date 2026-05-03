@@ -1,0 +1,7 @@
+.env
+google-service-account.json
+.mysql-data
+.mysql-data-mysql96-backup
+.mysql-run
+node_modules
+npm-debug.log*

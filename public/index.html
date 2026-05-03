@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Screening Interview</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <section class="panel intro-panel">
+        <h1>Phỏng vấn sơ lọc với AI</h1>
+        <p>
+          Ứng viên sẽ trả lời theo dạng hội thoại. Nếu câu trả lời chưa đủ rõ, hệ
+          thống sẽ yêu cầu bổ sung tối đa 3 lần trước khi chuyển câu tiếp theo.
+        </p>
+
+        <form id="candidate-form" class="candidate-form">
+          <label>
+            Họ và tên
+            <input type="text" name="fullName" required />
+          </label>
+          <label>
+            Email
+            <input type="email" name="email" required />
+          </label>
+          <label>
+            Số điện thoại
+            <input type="text" name="phone" />
+          </label>
+          <button type="submit">Bắt đầu phỏng vấn</button>
+        </form>
+
+        <div id="report-box" class="report-box hidden">
+          <h2>Report tổng hợp</h2>
+          <div id="report-content"></div>
+          <button id="print-report" type="button">In report</button>
+        </div>
+      </section>
+
+      <section class="panel chat-panel">
+        <div id="status-bar" class="status-bar hidden"></div>
+        <div id="chat-log" class="chat-log"></div>
+
+        <form id="answer-form" class="answer-form hidden">
+          <textarea
+            id="answer-input"
+            rows="4"
+            placeholder="Nhập câu trả lời của bạn..."
+            required
+          ></textarea>
+          <button type="submit">Gửi câu trả lời</button>
+        </form>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

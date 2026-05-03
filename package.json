@@ -1,0 +1,16 @@
+{
+  "name": "kg-recruit-ai-screening",
+  "version": "1.0.0",
+  "description": "AI screening interview prototype with OpenAI, Google Sheets, and vanilla HTML/CSS/JS.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "googleapis": "^144.0.0",
+    "openai": "^4.77.0"
+  }
+}

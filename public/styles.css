@@ -1,0 +1,239 @@
+:root {
+  --bg: #f6f2e9;
+  --panel: rgba(255, 252, 247, 0.92);
+  --text: #1f2a2e;
+  --muted: #617076;
+  --line: #d8cfc0;
+  --brand: #a55c31;
+  --brand-dark: #6f3918;
+  --ai-bubble: #fff3df;
+  --user-bubble: #e7f0ed;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top left, rgba(165, 92, 49, 0.16), transparent 30%),
+    linear-gradient(135deg, #efe4d4 0%, #f8f4ec 48%, #efe7d7 100%);
+  min-height: 100vh;
+}
+
+.layout {
+  width: min(1180px, calc(100% - 32px));
+  margin: 24px auto;
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 20px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid rgba(111, 57, 24, 0.12);
+  border-radius: 20px;
+  box-shadow: 0 14px 40px rgba(75, 49, 28, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.intro-panel {
+  padding: 24px;
+}
+
+.intro-panel h1 {
+  font-size: 2rem;
+  line-height: 1.05;
+  margin: 0 0 12px;
+}
+
+.intro-panel p {
+  color: var(--muted);
+  margin-bottom: 20px;
+}
+
+.candidate-form,
+.answer-form {
+  display: grid;
+  gap: 14px;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.95rem;
+}
+
+input,
+textarea,
+button {
+  font: inherit;
+}
+
+input,
+textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+button {
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 18px;
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+  color: #fffdf8;
+  cursor: pointer;
+}
+
+.chat-panel {
+  padding: 18px;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 80vh;
+}
+
+.status-bar {
+  margin: 4px 8px 14px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(111, 57, 24, 0.08);
+  color: var(--brand-dark);
+  font-size: 0.92rem;
+}
+
+.chat-log {
+  overflow: auto;
+  padding: 8px;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.message {
+  max-width: 78%;
+  padding: 14px 16px;
+  border-radius: 18px;
+  line-height: 1.5;
+  animation: rise 220ms ease-out;
+}
+
+.message.ai {
+  background: var(--ai-bubble);
+  justify-self: start;
+  border-top-left-radius: 6px;
+}
+
+.message.user {
+  background: var(--user-bubble);
+  justify-self: end;
+  border-top-right-radius: 6px;
+}
+
+.meta {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.report-box {
+  margin-top: 24px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
+.report-card {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  margin-bottom: 14px;
+}
+
+.report-card h3 {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+.report-block {
+  margin-bottom: 12px;
+}
+
+.report-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.attempt {
+  padding: 12px;
+  margin-top: 10px;
+  border-radius: 14px;
+  background: rgba(255, 249, 240, 0.85);
+  border: 1px solid rgba(111, 57, 24, 0.12);
+}
+
+.hidden {
+  display: none;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-panel {
+    min-height: 65vh;
+  }
+
+  .message {
+    max-width: 92%;
+  }
+}
+
+@media print {
+  body {
+    background: #ffffff;
+  }
+
+  .layout {
+    width: 100%;
+    margin: 0;
+    display: block;
+  }
+
+  .chat-panel,
+  .candidate-form,
+  #print-report,
+  .status-bar {
+    display: none !important;
+  }
+
+  .intro-panel {
+    box-shadow: none;
+    border: 0;
+    padding: 0;
+  }
+
+  .report-box {
+    display: block !important;
+    border-top: 0;
+    padding-top: 0;
+  }
+}
