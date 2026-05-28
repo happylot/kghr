@@ -24,6 +24,24 @@ body {
   min-height: 100vh;
 }
 
+.brand-bar,
+.page-footer {
+  width: min(1180px, calc(100% - 32px));
+  margin-inline: auto;
+}
+
+.brand-bar {
+  padding-top: 24px;
+}
+
+.brand-logo {
+  display: block;
+  width: auto;
+  max-width: min(240px, 55vw);
+  max-height: 68px;
+  object-fit: contain;
+}
+
 .layout {
   width: min(1180px, calc(100% - 32px));
   margin: 24px auto;
@@ -214,6 +232,13 @@ button {
   display: none;
 }
 
+.page-footer {
+  padding: 0 0 24px;
+  color: var(--muted);
+  font-size: 0.92rem;
+  text-align: center;
+}
+
 @keyframes rise {
   from {
     opacity: 0;
@@ -258,16 +283,23 @@ button {
     background: #ffffff;
   }
 
+  .brand-bar,
+  .page-footer,
   .layout {
     width: 100%;
     margin: 0;
+  }
+
+  .layout {
     display: block;
   }
 
   .chat-panel,
   .candidate-form,
   #print-report,
-  .status-bar {
+  .status-bar,
+  .brand-bar,
+  .page-footer {
     display: none !important;
   }
 

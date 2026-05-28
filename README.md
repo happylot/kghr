@@ -6,6 +6,7 @@ Prototype này triển khai luồng sơ lọc bằng hội thoại AI và lưu d
 - Mỗi câu được AI kiểm tra mức độ đầy đủ và đúng trọng tâm nhưng không quá khắt khe với ứng viên
 - Nếu câu trả lời chưa đạt, AI yêu cầu bổ sung.
 - Tối đa 2 lần cho mỗi câu, sau đó tự chuyển tiếp.
+- Sau 2 câu hỏi mà hệ thống nhận thấy ứng viên trả lời quá hời hợt, thiếu nghiêm túc đối với cuộc phỏng vấn, thì chủ động thông báo dừng cuộc phỏng vấn để tránh mất thời gian và tài nguyên của công ty
 - Kết thúc sẽ sinh report tổng hợp để người phỏng vấn đọc trước vòng vấn đáp.
 - Cuối bài phỏng vấn không trả kết quả passs hay fail mà chỉ chúc mừng đã hoàn thành và sẽ được leader liên hệ sớm.
 
@@ -36,7 +37,10 @@ Prototype này triển khai luồng sơ lọc bằng hội thoại AI và lưu d
   - Trả feedback để ứng viên bổ sung
 7. Nếu đạt hoặc đã quá 2 lần:
   - Chuyển sang câu tiếp theo
-8. Khi hết 10 câu:
+8. Sau 2 câu đầu:
+  - Nếu ứng viên trả lời quá hời hợt hoặc thiếu nghiêm túc rõ rệt, hệ thống sẽ dừng phiên phỏng vấn
+  - Nếu phù hợp, hệ thống tiếp tục các câu còn lại
+9. Khi hết 10 câu:
   - Tạo report tổng hợp
   - Lưu report vào tab `reports`
   - Hiển thị để in

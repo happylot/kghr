@@ -10,6 +10,9 @@ dotenv.config();
 const app = express();
 app.use(express.json({ limit: "1mb" }));
 app.use(express.static(path.join(__dirname, "public")));
+app.get("/logo.png", (_req, res) => {
+  res.sendFile(path.join(__dirname, "logo.png"));
+});
 
 const port = Number(process.env.PORT || 3000);
 const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
@@ -25,6 +28,8 @@ const SHEETS = {
 
 const MAX_ATTEMPTS_PER_QUESTION = 2;
 const DEFAULT_TEMPLATE_ID = 1;
+const EARLY_TERMINATION_REVIEW_QUESTIONS = 2;
+const TERMINATED_LOW_ENGAGEMENT_STATUS = "TERMINATED_LOW_ENGAGEMENT";
 
 const SHEET_HEADERS = {
   [SHEETS.QUESTIONS]: [
@@ -54,6 +59,8 @@ const SHEET_HEADERS = {
     "ai_feedback",
     "is_accepted",
     "ai_score",
+    "low_effort_signal",
+    "professionalism_note",
     "summary_for_recruiter",
     "created_at"
   ],
@@ -163,6 +170,10 @@ function nowIso() {
 
 function totalQuestionsLabel(count) {
   return Number.isFinite(Number(count)) && Number(count) > 0 ? Number(count) : 10;
+}
+
+function boolToSheetValue(value) {
+  return value ? "1" : "0";
 }
 
 function toSafeScore(value) {
@@ -383,6 +394,8 @@ Yêu cầu:
 - Chỉ đặt accepted = false khi còn thiếu ý quan trọng khiến nhà tuyển dụng khó hiểu mức độ phù hợp.
 - feedback_for_candidate phải ngắn, rõ, chỉ ra phần còn thiếu để ứng viên bổ sung ở lần tiếp theo.
 - score_over_10 là điểm tham khảo cho nhà tuyển dụng.
+- low_effort_signal = true nếu câu trả lời quá hời hợt, quá ngắn, né tránh, đùa cợt hoặc thể hiện thiếu nghiêm túc rõ rệt.
+- professionalism_note là ghi chú rất ngắn cho recruiter về mức độ nghiêm túc của câu trả lời.
 - missing_points là mảng các ý còn thiếu.
 - summary_for_recruiter là tóm tắt ngắn cho nội bộ.
 - Luôn đánh giá theo bối cảnh vị trí ứng tuyển. Câu trả lời càng liên quan trực tiếp đến vị trí thì điểm càng cao.
@@ -393,6 +406,8 @@ Trả về JSON đúng cấu trúc:
 {
   "accepted": true,
   "score_over_10": 8,
+  "low_effort_signal": false,
+  "professionalism_note": "string",
   "feedback_for_candidate": "string",
   "missing_points": ["string"],
   "summary_for_recruiter": "string"
@@ -416,6 +431,11 @@ Câu trả lời ứng viên: ${answer}
     return {
       accepted: answer.trim().length >= 80,
       score_over_10: answer.trim().length >= 80 ? 6 : 4,
+      low_effort_signal: answer.trim().length < 20,
+      professionalism_note:
+        answer.trim().length < 20
+          ? "Câu trả lời quá ngắn, có dấu hiệu hời hợt."
+          : "Không đánh giá được đầy đủ do fallback parser.",
       feedback_for_candidate: "Câu trả lời còn ngắn hoặc chưa rõ trọng tâm. Hãy bổ sung cụ thể hơn.",
       missing_points: ["Cần thêm chi tiết và bám sát câu hỏi"],
       summary_for_recruiter: "Fallback parser used because model output was not valid JSON."
@@ -425,10 +445,84 @@ Câu trả lời ứng viên: ${answer}
   return {
     accepted: Boolean(parsed.accepted),
     score_over_10: toSafeScore(parsed.score_over_10),
+    low_effort_signal: Boolean(parsed.low_effort_signal),
+    professionalism_note: String(parsed.professionalism_note || ""),
     feedback_for_candidate: String(parsed.feedback_for_candidate || ""),
     missing_points: Array.isArray(parsed.missing_points) ? parsed.missing_points : [],
     summary_for_recruiter: String(parsed.summary_for_recruiter || "")
   };
+}
+
+function buildLatestAttemptMap(rows) {
+  const latestByQuestionId = new Map();
+
+  for (const row of rows) {
+    const current = latestByQuestionId.get(row.question_id);
+    if (!current || Number(row.attempt_no) > Number(current.attempt_no)) {
+      latestByQuestionId.set(row.question_id, row);
+    }
+  }
+
+  return latestByQuestionId;
+}
+
+async function shouldTerminateForLowEngagement(sessionId, questions) {
+  const firstQuestions = questions
+    .filter((question) => Number(question.order_no) <= EARLY_TERMINATION_REVIEW_QUESTIONS)
+    .sort((a, b) => Number(a.order_no) - Number(b.order_no));
+
+  if (firstQuestions.length < EARLY_TERMINATION_REVIEW_QUESTIONS) {
+    return { shouldTerminate: false, note: "" };
+  }
+
+  const allAnswers = await getRows(SHEETS.ANSWERS);
+  const sessionAnswers = allAnswers.filter((row) => row.session_id === sessionId);
+  const latestByQuestionId = buildLatestAttemptMap(sessionAnswers);
+  const reviewedAnswers = firstQuestions
+    .map((question) => latestByQuestionId.get(question.id))
+    .filter(Boolean);
+
+  if (reviewedAnswers.length < EARLY_TERMINATION_REVIEW_QUESTIONS) {
+    return { shouldTerminate: false, note: "" };
+  }
+
+  const allLowEffort = reviewedAnswers.every((row) => row.low_effort_signal === "1");
+
+  if (!allLowEffort) {
+    return { shouldTerminate: false, note: "" };
+  }
+
+  const note = reviewedAnswers
+    .map((row, index) => `Câu ${index + 1}: ${row.professionalism_note || "Có dấu hiệu trả lời hời hợt."}`)
+    .join(" ");
+
+  return {
+    shouldTerminate: true,
+    note
+  };
+}
+
+async function upsertTerminationReport(sessionId, note) {
+  const reports = await getRows(SHEETS.REPORTS);
+  const existing = reports.find((row) => row.session_id === sessionId);
+  const values = [
+    sessionId,
+    "Phiên phỏng vấn được dừng sớm sau 2 câu đầu vì câu trả lời cho thấy mức độ đầu tư thấp hoặc thiếu nghiêm túc.",
+    JSON.stringify([]),
+    JSON.stringify([
+      "Ứng viên trả lời hời hợt hoặc thiếu tập trung ngay từ giai đoạn đầu.",
+      note || "Cần xem lại chi tiết 2 câu trả lời đầu."
+    ]),
+    JSON.stringify([]),
+    "Session đã được dừng sớm để tránh tốn thêm thời gian và tài nguyên phỏng vấn.",
+    nowIso()
+  ];
+
+  if (existing) {
+    await updateRow(SHEETS.REPORTS, existing.__rowNumber, values);
+  } else {
+    await appendRow(SHEETS.REPORTS, values);
+  }
 }
 
 async function loadSessionState(sessionId) {
@@ -619,7 +713,7 @@ app.get("/api/interview/:sessionId/current", async (req, res) => {
       sessionId: state.session.id,
       status: state.session.status,
       totalQuestions: totalQuestionsLabel(state.questions.length),
-      question: state.currentQuestion
+      question: state.session.status === "IN_PROGRESS" && state.currentQuestion
         ? {
             orderNo: Number(state.currentQuestion.order_no),
             text: questionTextForCandidate(
@@ -648,6 +742,9 @@ app.post("/api/interview/:sessionId/answer", async (req, res) => {
     if (!state || !state.currentQuestion) {
       return res.status(404).json({ error: "Không còn câu hỏi hiện tại." });
     }
+    if (state.session.status !== "IN_PROGRESS") {
+      return res.status(409).json({ error: "Phiên phỏng vấn này không còn nhận câu trả lời mới." });
+    }
 
     const answers = await getRows(SHEETS.ANSWERS);
     const relatedAttempts = answers.filter(
@@ -673,8 +770,10 @@ app.post("/api/interview/:sessionId/answer", async (req, res) => {
       String(attemptNo),
       answer,
       evaluation.feedback_for_candidate,
-      evaluation.accepted ? "1" : "0",
+      boolToSheetValue(evaluation.accepted),
       String(evaluation.score_over_10),
+      boolToSheetValue(evaluation.low_effort_signal),
+      evaluation.professionalism_note,
       evaluation.summary_for_recruiter,
       nowIso()
     ]);
@@ -693,6 +792,40 @@ app.post("/api/interview/:sessionId/answer", async (req, res) => {
     const nextQuestionNo = Number(state.session.current_question_no) + 1;
     const nextQuestion =
       state.questions.find((q) => Number(q.order_no) === nextQuestionNo) || null;
+
+    if (Number(state.session.current_question_no) === EARLY_TERMINATION_REVIEW_QUESTIONS) {
+      const terminationDecision = await shouldTerminateForLowEngagement(
+        state.session.id,
+        state.questions
+      );
+
+      if (terminationDecision.shouldTerminate) {
+        await updateRow(SHEETS.SESSIONS, state.session.__rowNumber, [
+          state.session.id,
+          state.session.candidate_id,
+          state.session.template_id,
+          String(Number(state.session.current_question_no)),
+          TERMINATED_LOW_ENGAGEMENT_STATUS,
+          state.session.started_at,
+          nowIso()
+        ]);
+        await upsertTerminationReport(state.session.id, terminationDecision.note);
+
+        return res.json({
+          accepted: evaluation.accepted,
+          forcedAdvance,
+          attemptNo,
+          totalQuestions,
+          terminatedEarly: true,
+          feedback:
+            "Hệ thống đã ghi nhận phần trả lời ở 2 câu đầu, nhưng nội dung thể hiện mức độ đầu tư chưa phù hợp cho buổi phỏng vấn này.",
+          completionMessage:
+            "Buổi phỏng vấn sẽ dừng tại đây để tránh mất thêm thời gian và tài nguyên của công ty. Nếu muốn ứng tuyển lại, vui lòng chuẩn bị kỹ hơn cho lần trao đổi tiếp theo.",
+          nextQuestion: null,
+          completed: true
+        });
+      }
+    }
 
     await updateRow(SHEETS.SESSIONS, state.session.__rowNumber, [
       state.session.id,

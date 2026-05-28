@@ -129,7 +129,9 @@ async function submitAnswer(answer) {
     data.completionMessage ||
       "Chúc mừng bạn đã hoàn thành phần phỏng vấn sơ lọc. Leader sẽ liên hệ với bạn sớm."
   );
-  setStatus("Đã hoàn tất phần phỏng vấn sơ lọc");
+  setStatus(
+    data.terminatedEarly ? "Buổi phỏng vấn đã dừng sớm" : "Đã hoàn tất phần phỏng vấn sơ lọc"
+  );
   answerForm.classList.add("hidden");
 }
 
