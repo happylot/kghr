@@ -1,4 +1,4 @@
-# AI Screening Interview Prototype
+# AI Screening Interview System
 
 Prototype này triển khai luồng sơ lọc bằng hội thoại AI và lưu dữ liệu vào Google Sheets.
 
