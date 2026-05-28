@@ -23,6 +23,9 @@ const SHEETS = {
   REPORTS: "reports"
 };
 
+const MAX_ATTEMPTS_PER_QUESTION = 2;
+const DEFAULT_TEMPLATE_ID = 1;
+
 const SHEET_HEADERS = {
   [SHEETS.QUESTIONS]: [
     "id",
@@ -156,6 +159,10 @@ let sheetsClientPromise;
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function totalQuestionsLabel(count) {
+  return Number.isFinite(Number(count)) && Number(count) > 0 ? Number(count) : 10;
 }
 
 function toSafeScore(value) {
@@ -371,13 +378,15 @@ Bạn là AI sơ lọc ứng viên.
 Hãy đánh giá xem câu trả lời của ứng viên cho câu hỏi bên dưới đã đủ ý, đủ chi tiết, đúng trọng tâm và phù hợp với vị trí ứng tuyển chưa.
 
 Yêu cầu:
-- Nếu câu trả lời đạt: accepted = true.
-- Nếu chưa đạt: accepted = false.
+- Đánh giá theo hướng hỗ trợ ứng viên, không quá khắt khe.
+- Nếu câu trả lời đã chạm được các ý chính và có liên quan đến vị trí ứng tuyển thì ưu tiên accepted = true, kể cả khi chưa hoàn hảo.
+- Chỉ đặt accepted = false khi còn thiếu ý quan trọng khiến nhà tuyển dụng khó hiểu mức độ phù hợp.
 - feedback_for_candidate phải ngắn, rõ, chỉ ra phần còn thiếu để ứng viên bổ sung ở lần tiếp theo.
 - score_over_10 là điểm tham khảo cho nhà tuyển dụng.
 - missing_points là mảng các ý còn thiếu.
 - summary_for_recruiter là tóm tắt ngắn cho nội bộ.
 - Luôn đánh giá theo bối cảnh vị trí ứng tuyển. Câu trả lời càng liên quan trực tiếp đến vị trí thì điểm càng cao.
+- Nếu đây là lần trả lời cuối cùng cho câu hỏi này, vẫn giữ feedback_for_candidate ở mức lịch sự và thực dụng.
 - Không được viết ngoài JSON.
 
 Trả về JSON đúng cấu trúc:
@@ -484,7 +493,7 @@ Trả về JSON:
   "strengths": ["string"],
   "concerns": ["string"],
   "follow_up_questions": ["string"],
-  "recommendation": "PASS | REVIEW | REJECT"
+  "interviewer_note": "string"
 }
 
 Thông tin ứng viên:
@@ -508,7 +517,7 @@ ${JSON.stringify(grouped, null, 2)}
     strengths: [],
     concerns: ["Cần đọc lại toàn bộ câu trả lời gốc."],
     follow_up_questions: ["Làm rõ thêm kinh nghiệm và mức độ phù hợp công việc."],
-    recommendation: "REVIEW"
+    interviewer_note: "Cần reviewer đọc câu trả lời gốc trước vòng vấn đáp."
   };
 
   const reports = await getRows(SHEETS.REPORTS);
@@ -519,7 +528,7 @@ ${JSON.stringify(grouped, null, 2)}
     JSON.stringify(report.strengths || []),
     JSON.stringify(report.concerns || []),
     JSON.stringify(report.follow_up_questions || []),
-    report.recommendation || "REVIEW",
+    report.interviewer_note || "Cần đọc lại câu trả lời gốc trước vòng vấn đáp.",
     nowIso()
   ];
 
@@ -552,7 +561,7 @@ app.post("/api/interview/start", async (req, res) => {
   try {
     await ensureSheetsBootstrap();
 
-    const { fullName, email, phone, appliedPosition, templateId = 1 } = req.body;
+    const { fullName, email, phone, appliedPosition, templateId = DEFAULT_TEMPLATE_ID } = req.body;
     if (!fullName || !email || !appliedPosition) {
       return res.status(400).json({ error: "Thiếu họ tên, email hoặc vị trí ứng tuyển." });
     }
@@ -586,6 +595,7 @@ app.post("/api/interview/start", async (req, res) => {
     res.json({
       sessionId,
       candidateId,
+      totalQuestions: totalQuestionsLabel(questions.length),
       question: {
         orderNo: Number(questions[0].order_no),
         text: questionTextForCandidate(questions[0], appliedPosition)
@@ -608,6 +618,7 @@ app.get("/api/interview/:sessionId/current", async (req, res) => {
     res.json({
       sessionId: state.session.id,
       status: state.session.status,
+      totalQuestions: totalQuestionsLabel(state.questions.length),
       question: state.currentQuestion
         ? {
             orderNo: Number(state.currentQuestion.order_no),
@@ -645,13 +656,14 @@ app.post("/api/interview/:sessionId/answer", async (req, res) => {
 
     const attemptNo = relatedAttempts.length + 1;
     const appliedPosition = getAppliedPosition(state.candidate);
+    const totalQuestions = totalQuestionsLabel(state.questions.length);
     const evaluation = await evaluateAnswer(
       state.currentQuestion,
       answer,
       attemptNo,
       appliedPosition
     );
-    const forcedAdvance = !evaluation.accepted && attemptNo >= 3;
+    const forcedAdvance = !evaluation.accepted && attemptNo >= MAX_ATTEMPTS_PER_QUESTION;
     const answerId = await nextId(SHEETS.ANSWERS, "ans_");
 
     await appendRow(SHEETS.ANSWERS, [
@@ -671,7 +683,8 @@ app.post("/api/interview/:sessionId/answer", async (req, res) => {
       return res.json({
         accepted: false,
         attemptNo,
-        feedback: `Câu trả lời chưa đạt. ${evaluation.feedback_for_candidate} Bạn còn ${3 - attemptNo} lần bổ sung cho câu này.`,
+        totalQuestions,
+        feedback: `Câu trả lời cần bổ sung thêm một chút. ${evaluation.feedback_for_candidate} Bạn còn ${MAX_ATTEMPTS_PER_QUESTION - attemptNo} lần bổ sung cho câu này.`,
         nextQuestion: null,
         completed: false
       });
@@ -698,9 +711,12 @@ app.post("/api/interview/:sessionId/answer", async (req, res) => {
         accepted: evaluation.accepted,
         forcedAdvance,
         attemptNo,
+        totalQuestions,
         feedback: forcedAdvance
-          ? "Đã đủ 3 lần bổ sung. Hệ thống sẽ chuyển sang câu tiếp theo hoặc kết thúc phần phỏng vấn."
+          ? "Hệ thống đã ghi nhận tối đa 2 lần trả lời cho câu này."
           : "Câu trả lời đã được ghi nhận.",
+        completionMessage:
+          "Chúc mừng bạn đã hoàn thành phần phỏng vấn sơ lọc. Leader sẽ liên hệ với bạn sớm.",
         nextQuestion: null,
         completed: true
       });
@@ -710,9 +726,10 @@ app.post("/api/interview/:sessionId/answer", async (req, res) => {
       accepted: evaluation.accepted,
       forcedAdvance,
       attemptNo,
+      totalQuestions,
       feedback: forcedAdvance
-        ? "Đã đủ 3 lần bổ sung. Hệ thống chuyển sang câu tiếp theo."
-        : "Câu trả lời đã đạt yêu cầu. Chuyển sang câu tiếp theo.",
+        ? "Hệ thống đã ghi nhận tối đa 2 lần trả lời cho câu này và sẽ chuyển sang câu tiếp theo."
+        : "Câu trả lời đã được ghi nhận. Chuyển sang câu tiếp theo.",
       nextQuestion: {
         orderNo: Number(nextQuestion.order_no),
         text: questionTextForCandidate(nextQuestion, appliedPosition)
@@ -792,7 +809,7 @@ app.get("/api/interview/:sessionId/report", async (req, res) => {
             strengths: JSON.parse(report.strengths_json || "[]"),
             concerns: JSON.parse(report.concerns_json || "[]"),
             followUpQuestions: JSON.parse(report.follow_up_questions_json || "[]"),
-            recommendation: report.recommendation
+            interviewerNote: report.recommendation
           }
         : null,
       answers: groupedAnswers

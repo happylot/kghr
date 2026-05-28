@@ -9,6 +9,8 @@ const statusBar = document.getElementById("status-bar");
 
 let sessionId = null;
 let currentQuestionNo = 0;
+let totalQuestions = 10;
+let typingIndicator = null;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -20,12 +22,44 @@ function escapeHtml(value) {
 }
 
 function appendMessage(role, title, text) {
+  removeTypingIndicator();
   const wrapper = document.createElement("article");
   wrapper.className = `message ${role}`;
   wrapper.innerHTML = `
     <span class="meta">${escapeHtml(title)}</span>
     <div>${escapeHtml(text).replace(/\n/g, "<br>")}</div>
   `;
+  chatLog.appendChild(wrapper);
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+function removeTypingIndicator() {
+  if (!typingIndicator) {
+    return;
+  }
+
+  typingIndicator.remove();
+  typingIndicator = null;
+}
+
+function showTypingIndicator(text = "Nhà tuyển dụng đang soạn câu hỏi...") {
+  removeTypingIndicator();
+
+  const wrapper = document.createElement("article");
+  wrapper.className = "message ai typing";
+  wrapper.innerHTML = `
+    <span class="meta">AI Recruiter</span>
+    <div class="typing-content">
+      <span>${escapeHtml(text)}</span>
+      <span class="typing-dots" aria-hidden="true">
+        <span></span>
+        <span></span>
+        <span></span>
+      </span>
+    </div>
+  `;
+
+  typingIndicator = wrapper;
   chatLog.appendChild(wrapper);
   chatLog.scrollTop = chatLog.scrollHeight;
 }
@@ -54,9 +88,10 @@ async function startInterview(formData) {
   }
 
   sessionId = data.sessionId;
+  totalQuestions = Number(data.totalQuestions || totalQuestions);
   currentQuestionNo = data.question.orderNo;
   answerForm.classList.remove("hidden");
-  setStatus(`Đang ở câu ${currentQuestionNo}/10`);
+  setStatus(`Đang ở câu ${currentQuestionNo}/${totalQuestions}`);
   appendMessage("ai", "AI Recruiter", `Câu ${data.question.orderNo}: ${data.question.text}`);
 }
 
@@ -76,7 +111,8 @@ async function submitAnswer(answer) {
     appendMessage("ai", "AI Recruiter", data.feedback);
     if (data.nextQuestion) {
       currentQuestionNo = data.nextQuestion.orderNo;
-      setStatus(`Đang ở câu ${currentQuestionNo}/10`);
+      totalQuestions = Number(data.totalQuestions || totalQuestions);
+      setStatus(`Đang ở câu ${currentQuestionNo}/${totalQuestions}`);
       appendMessage(
         "ai",
         "AI Recruiter",
@@ -87,10 +123,14 @@ async function submitAnswer(answer) {
   }
 
   appendMessage("ai", "AI Recruiter", data.feedback);
-  appendMessage("ai", "AI Recruiter", "Phần phỏng vấn sơ lọc đã hoàn tất.");
+  appendMessage(
+    "ai",
+    "AI Recruiter",
+    data.completionMessage ||
+      "Chúc mừng bạn đã hoàn thành phần phỏng vấn sơ lọc. Leader sẽ liên hệ với bạn sớm."
+  );
   setStatus("Đã hoàn tất phần phỏng vấn sơ lọc");
   answerForm.classList.add("hidden");
-  await loadReport();
 }
 
 function renderAttempt(attempt) {
@@ -129,8 +169,8 @@ async function loadReport() {
       <p><strong>Email:</strong> ${escapeHtml(data.session.email)}</p>
       <p><strong>Điện thoại:</strong> ${escapeHtml(data.session.phone || "-")}</p>
       <p><strong>Vị trí ứng tuyển:</strong> ${escapeHtml(data.session.applied_position || "-")}</p>
-      <p><strong>Kết luận:</strong> ${escapeHtml(report?.recommendation || "REVIEW")}</p>
       <p><strong>Tóm tắt:</strong> ${escapeHtml(report?.overallSummary || "Chưa có")}</p>
+      <p><strong>Gợi ý cho interviewer:</strong> ${escapeHtml(report?.interviewerNote || "-")}</p>
       <p><strong>Điểm mạnh:</strong></p>
       <ul class="report-list">
         ${(report?.strengths || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("") || "<li>-</li>"}
@@ -155,10 +195,13 @@ candidateForm.addEventListener("submit", async (event) => {
 
   try {
     appendMessage("ai", "System", "Đang khởi tạo phiên phỏng vấn...");
+    showTypingIndicator("Nhà tuyển dụng đang chuẩn bị câu hỏi đầu tiên...");
     await startInterview(formData);
   } catch (error) {
     appendMessage("ai", "System", error.message);
     candidateForm.querySelector("button").disabled = false;
+  } finally {
+    removeTypingIndicator();
   }
 });
 
@@ -171,11 +214,21 @@ answerForm.addEventListener("submit", async (event) => {
 
   appendMessage("user", "Ứng viên", answer);
   answerInput.value = "";
+  answerInput.disabled = true;
+  answerForm.querySelector("button").disabled = true;
 
   try {
+    showTypingIndicator("Nhà tuyển dụng đang xem câu trả lời...");
     await submitAnswer(answer);
   } catch (error) {
     appendMessage("ai", "System", error.message);
+  } finally {
+    removeTypingIndicator();
+    if (!answerForm.classList.contains("hidden")) {
+      answerInput.disabled = false;
+      answerForm.querySelector("button").disabled = false;
+      answerInput.focus();
+    }
   }
 });
 

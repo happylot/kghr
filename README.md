@@ -3,10 +3,11 @@
 Prototype này triển khai luồng sơ lọc bằng hội thoại AI và lưu dữ liệu vào Google Sheets.
 
 - Ứng viên trả lời theo dạng hội thoại thay vì điền Google Form.
-- Mỗi câu được AI kiểm tra mức độ đầy đủ và đúng trọng tâm.
+- Mỗi câu được AI kiểm tra mức độ đầy đủ và đúng trọng tâm nhưng không quá khắt khe với ứng viên
 - Nếu câu trả lời chưa đạt, AI yêu cầu bổ sung.
-- Tối đa 3 lần cho mỗi câu, sau đó tự chuyển tiếp.
+- Tối đa 2 lần cho mỗi câu, sau đó tự chuyển tiếp.
 - Kết thúc sẽ sinh report tổng hợp để người phỏng vấn đọc trước vòng vấn đáp.
+- Cuối bài phỏng vấn không trả kết quả passs hay fail mà chỉ chúc mừng đã hoàn thành và sẽ được leader liên hệ sớm.
 
 ## Kiến trúc
 
@@ -27,18 +28,18 @@ Prototype này triển khai luồng sơ lọc bằng hội thoại AI và lưu d
 3. Hệ thống lấy câu hỏi hiện tại từ tab `questions`.
 4. Ứng viên trả lời.
 5. Backend gọi OpenAI để đánh giá theo vị trí ứng tuyển:
-   - Có đúng trọng tâm không
-   - Có đủ ý không
-   - Có cần bổ sung gì không
-6. Nếu chưa đạt và chưa quá 3 lần:
-   - Giữ nguyên câu hiện tại
-   - Trả feedback để ứng viên bổ sung
-7. Nếu đạt hoặc đã quá 3 lần:
-   - Chuyển sang câu tiếp theo
+  - Có đúng trọng tâm không
+  - Có đủ ý không
+  - Có cần bổ sung gì không
+6. Nếu chưa đạt và chưa quá 2 lần:
+  - Giữ nguyên câu hiện tại
+  - Trả feedback để ứng viên bổ sung
+7. Nếu đạt hoặc đã quá 2 lần:
+  - Chuyển sang câu tiếp theo
 8. Khi hết 10 câu:
-   - Tạo report tổng hợp
-   - Lưu report vào tab `reports`
-   - Hiển thị để in
+  - Tạo report tổng hợp
+  - Lưu report vào tab `reports`
+  - Hiển thị để in
 
 ## Stack phù hợp
 
@@ -53,9 +54,9 @@ Prototype này triển khai luồng sơ lọc bằng hội thoại AI và lưu d
 2. Tạo Google service account và tải file JSON key về project, ví dụ `google-service-account.json`.
 3. Share spreadsheet cho email của service account với quyền `Editor`.
 4. Điền file `.env`:
-   - `OPENAI_API_KEY`
-   - `GOOGLE_SHEETS_SPREADSHEET_ID`
-   - `GOOGLE_SERVICE_ACCOUNT_KEY_FILE`
+  - `OPENAI_API_KEY`
+  - `GOOGLE_SHEETS_SPREADSHEET_ID`
+  - `GOOGLE_SERVICE_ACCOUNT_KEY_FILE`
 5. Cài dependency:
 
 ```bash
@@ -112,4 +113,5 @@ Tab `questions` sẽ được seed sẵn 10 câu mặc định.
 - Xuất PDF report
 - Ghi âm hoặc speech-to-text để ứng viên trả lời bằng giọng nói
 - Đồng bộ lịch sử vấn đáp sau vòng phỏng vấn trực tiếp
+
 # kghr
